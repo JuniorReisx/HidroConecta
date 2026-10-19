@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react"
 import { Navigate } from "react-router-dom"
-import { Building2, Camera, ClipboardList, Clock3, ImagePlus, MapPin, Plus, UserRound, X } from "lucide-react"
+import { Building2, Camera, ClipboardList, Clock3, ImagePlus, MapPin, Plus, Send, UserRound, X } from "lucide-react"
 import { Header } from "../components/Header"
 import { useSessao } from "../context/SessaoContext"
 import {
@@ -179,7 +179,9 @@ export function ChatPage() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <Header />
+      <div className="hidden md:block">
+        <Header />
+      </div>
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1">
         <aside className="hidden w-64 shrink-0 flex-col border-r border-sky-100 bg-white/80 md:flex">
           <nav className="flex flex-col gap-1 p-4">
@@ -251,14 +253,21 @@ export function ChatPage() {
         </aside>
 
         <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-white/90">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-3 md:hidden">
-            <button
-              type="button"
-              onClick={() => setSelecionadoId(visiveis[0]?.id ?? (prefeitura ? "novo" : ""))}
-              className="text-xs font-semibold text-slate-500 sm:text-sm"
-            >
-              Atendimentos
-            </button>
+          <div className="flex items-center gap-3 border-b border-slate-100 px-3 py-2 md:hidden">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-extrabold text-deep">
+                {prefeitura ? "Relato em tempo real" : "Resposta da instituição"}
+              </p>
+              <p className="truncate text-xs font-medium text-slate-500">
+                {prefeitura
+                  ? instituicaoDoRelato
+                    ? `${sessao.municipio} · ${instituicaoDoRelato.sigla}`
+                    : sessao.municipio
+                  : selecionado
+                    ? `${selecionado.municipio} · ${instituicaoDaSessao?.sigla}`
+                    : instituicaoDaSessao?.sigla}
+              </p>
+            </div>
             {prefeitura && (
               <button
                 type="button"
@@ -267,23 +276,23 @@ export function ChatPage() {
                   setFoto("")
                   setCoordenada(null)
                 }}
-                className="text-xs font-semibold text-brand sm:text-sm"
+                className="shrink-0 text-xs font-semibold text-brand"
               >
-                Novo relato
+                Novo
               </button>
             )}
-            <button type="button" onClick={sair} className="text-xs font-semibold text-slate-400 sm:text-sm">
+            <button type="button" onClick={sair} className="shrink-0 text-xs font-semibold text-slate-400">
               Sair
             </button>
           </div>
           {visiveis.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-3 md:hidden">
+            <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-3 py-2 md:hidden">
               {visiveis.map((atendimento) => (
                 <button
                   key={atendimento.id}
                   type="button"
                   onClick={() => setSelecionadoId(atendimento.id)}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
                     atendimento.id === selecionadoId ? "bg-brand text-white" : "bg-slate-100 text-navy"
                   }`}
                 >
@@ -307,7 +316,7 @@ export function ChatPage() {
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-8">
+              <div className="hidden flex-wrap items-start justify-between gap-4 border-b border-slate-100 px-5 py-5 sm:px-8 md:flex">
                 <div>
                   <h1 className="text-2xl font-extrabold text-deep">
                     {prefeitura ? "Relato em tempo real" : "Resposta da instituição"}
@@ -354,7 +363,27 @@ export function ChatPage() {
                 </span>
               </div>
 
-              <div ref={listaRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
+              {modoNovo && (
+                <div className="border-b border-slate-100 px-3 py-2 md:hidden">
+                  <CampoSelect
+                    label="Instituição"
+                    value={instituicaoId}
+                    onChange={(valor) => {
+                      setInstituicaoId(valor as InstituicaoId | "")
+                      setErro("")
+                    }}
+                    opcoes={[
+                      { valor: "", rotulo: "Selecione" },
+                      ...instituicoes.map((instituicao) => ({
+                        valor: instituicao.id,
+                        rotulo: instituicao.sigla,
+                      })),
+                    ]}
+                  />
+                </div>
+              )}
+
+              <div ref={listaRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3 sm:space-y-5 sm:px-8 sm:py-6">
                 {modoNovo && (
                   <p className="text-sm text-slate-400">
                     {instituicaoEscolhida
@@ -379,8 +408,8 @@ export function ChatPage() {
                 ))}
               </div>
 
-              <div className="border-t border-slate-100 px-5 py-4 sm:px-8">
-                <p className="mb-3 flex items-center justify-center gap-2 text-sm text-slate-400">
+              <div className="border-t border-slate-100 px-3 py-2 sm:px-8 sm:py-4">
+                <p className="mb-2 hidden items-center justify-center gap-2 text-sm text-slate-400 sm:flex">
                   <Clock3 size={15} />
                   {selecionado
                     ? statusDoAtendimento(selecionado)
@@ -388,8 +417,8 @@ export function ChatPage() {
                       ? `O relato será enviado para a ${instituicaoEscolhida.sigla}`
                       : "Selecione a instituição que vai receber o relato"}
                 </p>
-                {erro && <p className="mb-3 text-center text-sm text-red-600">{erro}</p>}
-                <form onSubmit={enviar} className="flex flex-col gap-3">
+                {erro && <p className="mb-2 text-center text-xs text-red-600 sm:mb-3 sm:text-sm">{erro}</p>}
+                <form onSubmit={enviar} className="flex flex-col gap-2">
                   {foto && (
                     <div className="w-fit">
                       <div className="relative">
@@ -415,43 +444,38 @@ export function ChatPage() {
                       {buscandoLocal && <p className="mt-2 text-xs text-slate-400">Lendo a localização da foto...</p>}
                     </div>
                   )}
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={abrirCamera}
-                        className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
-                      >
-                        <Camera size={18} />
-                        Câmera
-                      </button>
-                      <button
-                        type="button"
-                        onClick={abrirGaleria}
-                        className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
-                      >
-                        <ImagePlus size={18} />
-                        Galeria
-                      </button>
-                    </div>
+                  <div className="flex items-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={abrirCamera}
+                      aria-label="Tirar foto"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-400"
+                    >
+                      <Camera size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={abrirGaleria}
+                      aria-label="Escolher foto da galeria"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-400"
+                    >
+                      <ImagePlus size={18} />
+                    </button>
                     <textarea
                       value={texto}
                       onChange={(event) => setTexto(event.target.value)}
                       onKeyDown={aoTeclar}
-                      rows={2}
-                      placeholder={
-                        prefeitura
-                          ? "Descreva o que está acontecendo ou envie uma foto..."
-                          : "Escreva a resposta ou envie uma foto..."
-                      }
-                      className="min-h-16 flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none ring-tide focus:ring-2"
+                      rows={1}
+                      placeholder={prefeitura ? "Escreva o relato..." : "Escreva a resposta..."}
+                      className="max-h-24 min-h-10 flex-1 resize-none rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none ring-tide focus:ring-2"
                     />
                     <button
                       type="submit"
                       disabled={buscandoLocal}
-                      className="h-12 shrink-0 rounded-2xl bg-gradient-to-r from-brand to-[#128eab] px-5 font-semibold text-white hover:brightness-110 disabled:opacity-60"
+                      aria-label={prefeitura ? "Enviar relato" : "Enviar resposta"}
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand text-white disabled:opacity-60"
                     >
-                      {prefeitura ? "Enviar relato" : "Enviar resposta"}
+                      <Send size={16} />
                     </button>
                   </div>
                   <input
