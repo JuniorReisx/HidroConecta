@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  color: #16325c;
+  font-family: Manrope, "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgba(20, 184, 210, 0.18), transparent 60%),
+    radial-gradient(700px 380px at 100% 0%, rgba(26, 75, 150, 0.1), transparent 55%),
+    #f4f9fc;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
