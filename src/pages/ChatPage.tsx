@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react"
 import { Navigate } from "react-router-dom"
-import { Building2, ClipboardList, Clock3, Plus, UserRound } from "lucide-react"
+import { Building2, Camera, ClipboardList, Clock3, ImagePlus, Plus, UserRound, X } from "lucide-react"
 import { Header } from "../components/Header"
 import { useSessao } from "../context/SessaoContext"
 import {
@@ -24,8 +24,13 @@ export function ChatPage() {
   const [selecionadoId, setSelecionadoId] = useState<string | "novo">("novo")
   const [instituicaoId, setInstituicaoId] = useState<InstituicaoId | "">("")
   const [texto, setTexto] = useState("")
+  const [foto, setFoto] = useState("")
   const [erro, setErro] = useState("")
   const listaRef = useRef<HTMLDivElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galeriaRef = useRef<HTMLInputElement>(null)
+  const conversaRef = useRef(selecionadoId)
+  conversaRef.current = selecionadoId
 
   const selecionado = visiveis.find((atendimento) => atendimento.id === selecionadoId) ?? null
   const modoNovo = prefeitura && selecionadoId === "novo"
@@ -46,6 +51,10 @@ export function ChatPage() {
       if (selecionadoId !== "") setSelecionadoId("")
     }
   }, [prefeitura, selecionadoId, visiveis])
+
+  useEffect(() => {
+    setFoto("")
+  }, [selecionadoId])
 
   useEffect(() => {
     const lista = listaRef.current
@@ -72,28 +81,55 @@ export function ChatPage() {
   function enviar(event?: FormEvent) {
     event?.preventDefault()
     const relato = texto.trim()
-    if (!relato || !sessao) return
+    if ((!relato && !foto) || !sessao) return
 
-    if (modoNovo) {
-      if (!instituicaoId || !sessao.municipio) {
-        setErro("Escolha a instituição que vai receber o relato.")
+    try {
+      if (modoNovo) {
+        if (!instituicaoId || !sessao.municipio) {
+          setErro("Escolha a instituição que vai receber o relato.")
+          return
+        }
+        const id = criarRelato({
+          municipio: sessao.municipio,
+          instituicaoId,
+          prefeituraEmail: sessao.email,
+          texto: relato,
+          foto: foto || undefined,
+        })
+        setSelecionadoId(id)
+        setTexto("")
+        setFoto("")
+        setErro("")
         return
       }
-      const id = criarRelato({
-        municipio: sessao.municipio,
-        instituicaoId,
-        prefeituraEmail: sessao.email,
-        texto: relato,
-      })
-      setSelecionadoId(id)
+
+      if (!selecionado) return
+      enviarMensagem(selecionado.id, prefeitura ? "prefeitura" : "instituicao", relato, foto || undefined)
       setTexto("")
+      setFoto("")
       setErro("")
+    } catch {
+      setErro("Essa foto ficou grande demais para o navegador. Tente outra imagem.")
+    }
+  }
+
+  async function aoEscolherFoto(event: ChangeEvent<HTMLInputElement>) {
+    const arquivo = event.target.files?.[0]
+    event.target.value = ""
+    if (!arquivo) return
+    if (!arquivo.type.startsWith("image/")) {
+      setErro("Escolha uma foto em JPG ou PNG.")
       return
     }
-
-    if (!selecionado) return
-    enviarMensagem(selecionado.id, prefeitura ? "prefeitura" : "instituicao", relato)
-    setTexto("")
+    const conversa = conversaRef.current
+    try {
+      const comprimida = await comprimirFoto(arquivo)
+      if (conversaRef.current !== conversa) return
+      setFoto(comprimida)
+      setErro("")
+    } catch {
+      setErro("Não foi possível ler essa foto. Tente outra imagem em JPG ou PNG.")
+    }
   }
 
   function aoTeclar(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -125,6 +161,7 @@ export function ChatPage() {
                 onClick={() => {
                   setSelecionadoId("novo")
                   setTexto("")
+                  setFoto("")
                 }}
                 className={`flex items-center gap-3 rounded-xl border-l-4 px-3 py-3 text-left text-sm font-semibold ${
                   modoNovo
@@ -186,7 +223,10 @@ export function ChatPage() {
             {prefeitura && (
               <button
                 type="button"
-                onClick={() => setSelecionadoId("novo")}
+                onClick={() => {
+                  setSelecionadoId("novo")
+                  setFoto("")
+                }}
                 className="text-xs font-semibold text-brand sm:text-sm"
               >
                 Novo relato
@@ -293,6 +333,7 @@ export function ChatPage() {
                     }
                     hora={mensagem.hora}
                     texto={mensagem.texto}
+                    foto={mensagem.foto}
                   />
                 ))}
               </div>
@@ -307,25 +348,67 @@ export function ChatPage() {
                       : "Selecione a instituição que vai receber o relato"}
                 </p>
                 {erro && <p className="mb-3 text-center text-sm text-red-600">{erro}</p>}
-                <form onSubmit={enviar} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <textarea
-                    value={texto}
-                    onChange={(event) => setTexto(event.target.value)}
-                    onKeyDown={aoTeclar}
-                    rows={2}
-                    placeholder={
-                      prefeitura
-                        ? "Descreva o que está acontecendo na sua cidade..."
-                        : "Escreva a resposta para a prefeitura..."
-                    }
-                    className="min-h-16 flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none ring-tide focus:ring-2"
+                <form onSubmit={enviar} className="flex flex-col gap-3">
+                  {foto && (
+                    <div className="relative w-fit">
+                      <img src={foto} alt="Foto pronta para enviar" className="h-24 w-24 rounded-xl object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setFoto("")}
+                        aria-label="Remover foto"
+                        className="absolute -right-2 -top-2 grid h-7 w-7 place-items-center rounded-full bg-navy text-white"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cameraRef.current?.click()}
+                        className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
+                      >
+                        <Camera size={18} />
+                        Câmera
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => galeriaRef.current?.click()}
+                        className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
+                      >
+                        <ImagePlus size={18} />
+                        Galeria
+                      </button>
+                    </div>
+                    <textarea
+                      value={texto}
+                      onChange={(event) => setTexto(event.target.value)}
+                      onKeyDown={aoTeclar}
+                      rows={2}
+                      placeholder={
+                        prefeitura
+                          ? "Descreva o que está acontecendo ou envie uma foto..."
+                          : "Escreva a resposta ou envie uma foto..."
+                      }
+                      className="min-h-16 flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none ring-tide focus:ring-2"
+                    />
+                    <button
+                      type="submit"
+                      className="h-12 shrink-0 rounded-2xl bg-gradient-to-r from-brand to-[#128eab] px-5 font-semibold text-white hover:brightness-110"
+                    >
+                      {prefeitura ? "Enviar relato" : "Enviar resposta"}
+                    </button>
+                  </div>
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                    onChange={aoEscolherFoto}
                   />
-                  <button
-                    type="submit"
-                    className="h-12 shrink-0 rounded-2xl bg-gradient-to-r from-brand to-[#128eab] px-5 font-semibold text-white hover:brightness-110"
-                  >
-                    {prefeitura ? "Enviar relato" : "Enviar resposta"}
-                  </button>
+                  <input ref={galeriaRef} type="file" accept="image/*" hidden onChange={aoEscolherFoto} />
                 </form>
               </div>
             </>
@@ -341,12 +424,34 @@ function Bolha({
   autor,
   hora,
   texto,
+  foto,
 }: {
   minha: boolean
   autor: string
   hora: string
   texto: string
+  foto?: string
 }) {
+  const [aberta, setAberta] = useState(false)
+  const conteudo = (
+    <>
+      {foto && (
+        <button type="button" onClick={() => setAberta(true)} className="mb-2 block overflow-hidden rounded-xl">
+          <img src={foto} alt="Foto enviada no atendimento" className="max-h-56 w-full object-cover" />
+        </button>
+      )}
+      {texto && <p>{texto}</p>}
+      {aberta && foto && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4"
+          onClick={() => setAberta(false)}
+        >
+          <img src={foto} alt="Foto enviada no atendimento" className="max-h-[90vh] max-w-full rounded-xl" />
+        </div>
+      )}
+    </>
+  )
+
   if (minha) {
     return (
       <div className="ml-auto w-fit max-w-[85%]">
@@ -354,7 +459,7 @@ function Bolha({
           <span className="font-semibold text-slate-500">Você</span> {hora}
         </p>
         <div className="rounded-2xl rounded-tr-md bg-gradient-to-br from-sky-50 to-cyan-50 px-4 py-3 text-sm leading-6 text-slate-600">
-          {texto}
+          {conteudo}
         </div>
       </div>
     )
@@ -370,11 +475,39 @@ function Bolha({
           <span className="font-semibold text-slate-500">{autor}</span> {hora}
         </p>
         <div className="rounded-2xl rounded-tl-md border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600 shadow-sm">
-          {texto}
+          {conteudo}
         </div>
       </div>
     </div>
   )
+}
+
+function comprimirFoto(arquivo: File) {
+  return new Promise<string>((resolve, reject) => {
+    const url = URL.createObjectURL(arquivo)
+    const imagem = new Image()
+    imagem.onload = () => {
+      const limite = 1280
+      const escala = Math.min(1, limite / Math.max(imagem.width, imagem.height))
+      const tela = document.createElement("canvas")
+      tela.width = Math.max(1, Math.round(imagem.width * escala))
+      tela.height = Math.max(1, Math.round(imagem.height * escala))
+      const contexto = tela.getContext("2d")
+      if (!contexto) {
+        URL.revokeObjectURL(url)
+        reject(new Error("canvas"))
+        return
+      }
+      contexto.drawImage(imagem, 0, 0, tela.width, tela.height)
+      URL.revokeObjectURL(url)
+      resolve(tela.toDataURL("image/jpeg", 0.72))
+    }
+    imagem.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error("imagem"))
+    }
+    imagem.src = url
+  })
 }
 
 function CampoSelect({

@@ -6,6 +6,7 @@ export type Mensagem = {
   autor: "prefeitura" | "instituicao"
   texto: string
   hora: string
+  foto?: string
 }
 
 export type Atendimento = {
@@ -46,8 +47,8 @@ function ler(): Atendimento[] {
 }
 
 function publicar(lista: Atendimento[]) {
-  cache = lista
   localStorage.setItem(CHAVE, JSON.stringify(lista))
+  cache = lista
   ouvintes.forEach((ouvinte) => ouvinte())
 }
 
@@ -73,39 +74,45 @@ export function criarRelato(dados: {
   instituicaoId: InstituicaoId
   prefeituraEmail: string
   texto: string
+  foto?: string
 }) {
   const atendimento: Atendimento = {
     id: crypto.randomUUID(),
     municipio: dados.municipio,
     instituicaoId: dados.instituicaoId,
     prefeituraEmail: dados.prefeituraEmail,
-    mensagens: [
-      {
-        id: crypto.randomUUID(),
-        autor: "prefeitura",
-        texto: dados.texto,
-        hora: horaAtual(),
-      },
-    ],
+    mensagens: [novaMensagem("prefeitura", dados.texto, dados.foto)],
   }
   publicar([atendimento, ...ler()])
   return atendimento.id
 }
 
-export function enviarMensagem(atendimentoId: string, autor: Mensagem["autor"], texto: string) {
+export function enviarMensagem(
+  atendimentoId: string,
+  autor: Mensagem["autor"],
+  texto: string,
+  foto?: string,
+) {
   publicar(
     ler().map((atendimento) =>
       atendimento.id === atendimentoId
         ? {
             ...atendimento,
-            mensagens: [
-              ...atendimento.mensagens,
-              { id: crypto.randomUUID(), autor, texto, hora: horaAtual() },
-            ],
+            mensagens: [...atendimento.mensagens, novaMensagem(autor, texto, foto)],
           }
         : atendimento,
     ),
   )
+}
+
+function novaMensagem(autor: Mensagem["autor"], texto: string, foto?: string): Mensagem {
+  return {
+    id: crypto.randomUUID(),
+    autor,
+    texto,
+    hora: horaAtual(),
+    ...(foto ? { foto } : {}),
+  }
 }
 
 function horaAtual() {
