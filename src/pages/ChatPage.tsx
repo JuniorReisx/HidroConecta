@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from "react"
 import { Navigate } from "react-router-dom"
-import { Building2, Camera, ClipboardList, Clock3, ImagePlus, Plus, UserRound, X } from "lucide-react"
+import { Building2, Camera, ClipboardList, Clock3, ImagePlus, MapPin, Plus, UserRound, X } from "lucide-react"
 import { Header } from "../components/Header"
 import { useSessao } from "../context/SessaoContext"
 import {
@@ -8,6 +8,7 @@ import {
   enviarMensagem,
   statusDoAtendimento,
   useAtendimentos,
+  type Coordenada,
 } from "../data/atendimentos"
 import { buscarInstituicao, instituicoes, type InstituicaoId } from "../data/instituicoes"
 
@@ -25,10 +26,14 @@ export function ChatPage() {
   const [instituicaoId, setInstituicaoId] = useState<InstituicaoId | "">("")
   const [texto, setTexto] = useState("")
   const [foto, setFoto] = useState("")
+  const [coordenada, setCoordenada] = useState<Coordenada | null>(null)
+  const [buscandoLocal, setBuscandoLocal] = useState(false)
   const [erro, setErro] = useState("")
   const listaRef = useRef<HTMLDivElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
+  const origemRef = useRef<"camera" | "galeria">("galeria")
+  const localizacaoRef = useRef<Promise<Coordenada | null> | null>(null)
   const conversaRef = useRef(selecionadoId)
   conversaRef.current = selecionadoId
 
@@ -54,6 +59,8 @@ export function ChatPage() {
 
   useEffect(() => {
     setFoto("")
+    setCoordenada(null)
+    setBuscandoLocal(false)
   }, [selecionadoId])
 
   useEffect(() => {
@@ -81,7 +88,7 @@ export function ChatPage() {
   function enviar(event?: FormEvent) {
     event?.preventDefault()
     const relato = texto.trim()
-    if ((!relato && !foto) || !sessao) return
+    if (buscandoLocal || (!relato && !foto) || !sessao) return
 
     try {
       if (modoNovo) {
@@ -95,22 +102,42 @@ export function ChatPage() {
           prefeituraEmail: sessao.email,
           texto: relato,
           foto: foto || undefined,
+          coordenada: foto && coordenada ? coordenada : undefined,
         })
         setSelecionadoId(id)
         setTexto("")
         setFoto("")
+        setCoordenada(null)
         setErro("")
         return
       }
 
       if (!selecionado) return
-      enviarMensagem(selecionado.id, prefeitura ? "prefeitura" : "instituicao", relato, foto || undefined)
+      enviarMensagem(
+        selecionado.id,
+        prefeitura ? "prefeitura" : "instituicao",
+        relato,
+        foto || undefined,
+        foto && coordenada ? coordenada : undefined,
+      )
       setTexto("")
       setFoto("")
+      setCoordenada(null)
       setErro("")
     } catch {
       setErro("Essa foto ficou grande demais para o navegador. Tente outra imagem.")
     }
+  }
+
+  function abrirCamera() {
+    origemRef.current = "camera"
+    localizacaoRef.current = lerCoordenada()
+    cameraRef.current?.click()
+  }
+
+  function abrirGaleria() {
+    origemRef.current = "galeria"
+    galeriaRef.current?.click()
   }
 
   async function aoEscolherFoto(event: ChangeEvent<HTMLInputElement>) {
@@ -122,13 +149,24 @@ export function ChatPage() {
       return
     }
     const conversa = conversaRef.current
+    const pelaCamera = origemRef.current === "camera"
+    const pedidoLocal = pelaCamera ? localizacaoRef.current : null
+    if (pelaCamera) setBuscandoLocal(true)
     try {
       const comprimida = await comprimirFoto(arquivo)
+      const local = pedidoLocal ? await pedidoLocal : null
       if (conversaRef.current !== conversa) return
       setFoto(comprimida)
-      setErro("")
+      setCoordenada(local)
+      if (pelaCamera && !local) {
+        setErro("A foto foi anexada, mas o navegador não liberou a localização. Permita o acesso e tire a foto de novo.")
+      } else {
+        setErro("")
+      }
     } catch {
       setErro("Não foi possível ler essa foto. Tente outra imagem em JPG ou PNG.")
+    } finally {
+      if (conversaRef.current === conversa) setBuscandoLocal(false)
     }
   }
 
@@ -162,6 +200,7 @@ export function ChatPage() {
                   setSelecionadoId("novo")
                   setTexto("")
                   setFoto("")
+                  setCoordenada(null)
                 }}
                 className={`flex items-center gap-3 rounded-xl border-l-4 px-3 py-3 text-left text-sm font-semibold ${
                   modoNovo
@@ -226,6 +265,7 @@ export function ChatPage() {
                 onClick={() => {
                   setSelecionadoId("novo")
                   setFoto("")
+                  setCoordenada(null)
                 }}
                 className="text-xs font-semibold text-brand sm:text-sm"
               >
@@ -334,6 +374,7 @@ export function ChatPage() {
                     hora={mensagem.hora}
                     texto={mensagem.texto}
                     foto={mensagem.foto}
+                    coordenada={mensagem.coordenada}
                   />
                 ))}
               </div>
@@ -350,23 +391,35 @@ export function ChatPage() {
                 {erro && <p className="mb-3 text-center text-sm text-red-600">{erro}</p>}
                 <form onSubmit={enviar} className="flex flex-col gap-3">
                   {foto && (
-                    <div className="relative w-fit">
-                      <img src={foto} alt="Foto pronta para enviar" className="h-24 w-24 rounded-xl object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setFoto("")}
-                        aria-label="Remover foto"
-                        className="absolute -right-2 -top-2 grid h-7 w-7 place-items-center rounded-full bg-navy text-white"
-                      >
-                        <X size={14} />
-                      </button>
+                    <div className="w-fit">
+                      <div className="relative">
+                        <img src={foto} alt="Foto pronta para enviar" className="h-24 w-24 rounded-xl object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFoto("")
+                            setCoordenada(null)
+                          }}
+                          aria-label="Remover foto"
+                          className="absolute -right-2 -top-2 grid h-7 w-7 place-items-center rounded-full bg-navy text-white"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      {coordenada && (
+                        <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-navy">
+                          <MapPin size={14} />
+                          {formatarCoordenada(coordenada)}
+                        </p>
+                      )}
+                      {buscandoLocal && <p className="mt-2 text-xs text-slate-400">Lendo a localização da foto...</p>}
                     </div>
                   )}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => cameraRef.current?.click()}
+                        onClick={abrirCamera}
                         className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
                       >
                         <Camera size={18} />
@@ -374,7 +427,7 @@ export function ChatPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => galeriaRef.current?.click()}
+                        onClick={abrirGaleria}
                         className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-brand"
                       >
                         <ImagePlus size={18} />
@@ -395,7 +448,8 @@ export function ChatPage() {
                     />
                     <button
                       type="submit"
-                      className="h-12 shrink-0 rounded-2xl bg-gradient-to-r from-brand to-[#128eab] px-5 font-semibold text-white hover:brightness-110"
+                      disabled={buscandoLocal}
+                      className="h-12 shrink-0 rounded-2xl bg-gradient-to-r from-brand to-[#128eab] px-5 font-semibold text-white hover:brightness-110 disabled:opacity-60"
                     >
                       {prefeitura ? "Enviar relato" : "Enviar resposta"}
                     </button>
@@ -425,12 +479,14 @@ function Bolha({
   hora,
   texto,
   foto,
+  coordenada,
 }: {
   minha: boolean
   autor: string
   hora: string
   texto: string
   foto?: string
+  coordenada?: Coordenada
 }) {
   const [aberta, setAberta] = useState(false)
   const conteudo = (
@@ -439,6 +495,17 @@ function Bolha({
         <button type="button" onClick={() => setAberta(true)} className="mb-2 block overflow-hidden rounded-xl">
           <img src={foto} alt="Foto enviada no atendimento" className="max-h-56 w-full object-cover" />
         </button>
+      )}
+      {coordenada && (
+        <a
+          href={linkDoMapa(coordenada)}
+          target="_blank"
+          rel="noreferrer"
+          className="mb-2 flex items-center gap-1 font-semibold text-brand"
+        >
+          <MapPin size={14} />
+          {formatarCoordenada(coordenada)}
+        </a>
       )}
       {texto && <p>{texto}</p>}
       {aberta && foto && (
@@ -480,6 +547,34 @@ function Bolha({
       </div>
     </div>
   )
+}
+
+function lerCoordenada() {
+  if (!navigator.geolocation) return Promise.resolve(null)
+  return new Promise<Coordenada | null>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (posicao) => {
+        resolve({
+          latitude: posicao.coords.latitude,
+          longitude: posicao.coords.longitude,
+          precisao: Math.round(posicao.coords.accuracy),
+        })
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+    )
+  })
+}
+
+function formatarCoordenada(coordenada: Coordenada) {
+  const latitude = coordenada.latitude.toFixed(6).replace(".", ",")
+  const longitude = coordenada.longitude.toFixed(6).replace(".", ",")
+  const precisao = coordenada.precisao ? ` · cerca de ${coordenada.precisao} m` : ""
+  return `${latitude}, ${longitude}${precisao}`
+}
+
+function linkDoMapa(coordenada: Coordenada) {
+  return `https://www.google.com/maps/search/?api=1&query=${coordenada.latitude},${coordenada.longitude}`
 }
 
 function comprimirFoto(arquivo: File) {

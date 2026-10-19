@@ -1,12 +1,19 @@
 import { useSyncExternalStore } from "react"
 import { buscarInstituicao, type InstituicaoId } from "./instituicoes"
 
+export type Coordenada = {
+  latitude: number
+  longitude: number
+  precisao?: number
+}
+
 export type Mensagem = {
   id: string
   autor: "prefeitura" | "instituicao"
   texto: string
   hora: string
   foto?: string
+  coordenada?: Coordenada
 }
 
 export type Atendimento = {
@@ -75,13 +82,14 @@ export function criarRelato(dados: {
   prefeituraEmail: string
   texto: string
   foto?: string
+  coordenada?: Coordenada
 }) {
   const atendimento: Atendimento = {
     id: crypto.randomUUID(),
     municipio: dados.municipio,
     instituicaoId: dados.instituicaoId,
     prefeituraEmail: dados.prefeituraEmail,
-    mensagens: [novaMensagem("prefeitura", dados.texto, dados.foto)],
+    mensagens: [novaMensagem("prefeitura", dados.texto, dados.foto, dados.coordenada)],
   }
   publicar([atendimento, ...ler()])
   return atendimento.id
@@ -92,26 +100,33 @@ export function enviarMensagem(
   autor: Mensagem["autor"],
   texto: string,
   foto?: string,
+  coordenada?: Coordenada,
 ) {
   publicar(
     ler().map((atendimento) =>
       atendimento.id === atendimentoId
         ? {
             ...atendimento,
-            mensagens: [...atendimento.mensagens, novaMensagem(autor, texto, foto)],
+            mensagens: [...atendimento.mensagens, novaMensagem(autor, texto, foto, coordenada)],
           }
         : atendimento,
     ),
   )
 }
 
-function novaMensagem(autor: Mensagem["autor"], texto: string, foto?: string): Mensagem {
+function novaMensagem(
+  autor: Mensagem["autor"],
+  texto: string,
+  foto?: string,
+  coordenada?: Coordenada,
+): Mensagem {
   return {
     id: crypto.randomUUID(),
     autor,
     texto,
     hora: horaAtual(),
     ...(foto ? { foto } : {}),
+    ...(foto && coordenada ? { coordenada } : {}),
   }
 }
 
